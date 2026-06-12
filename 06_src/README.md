@@ -1,42 +1,71 @@
-# （系统名称）
+# 硬件产品全生命周期管理系统（HPLM）
 
 ## 运行环境
 
-<!-- 说明项目需要的运行环境，例如：
-     - Python 3.10+ / Node.js 18+ / Java 17+ 等
-     - PostgreSQL 15+
-     - 其他依赖
--->
+- PostgreSQL 14+
+- Qt 6.5 LTS（Widgets / Sql / Charts / Network 模块）
+- CMake 3.20+
+- C++17 编译器（MSVC 2022 / GCC 11+ / Clang 14+）
+- QPSQL 驱动（Qt6 SQL PostgreSQL 插件）
 
 ## 安装步骤
 
-<!-- 按步骤说明如何安装依赖和初始化项目 -->
+1. 安装 PostgreSQL，创建数据库：
+   ```sql
+   CREATE DATABASE hplm;
+   ```
 
-1. 安装依赖：`（安装命令）`
-2. 配置数据库：`（数据库初始化命令，如执行 sql/ 目录下的脚本）`
-3. 修改配置文件：`（说明 config/ 目录下的配置项）`
+2. 初始化数据库表结构：
+   ```bash
+   psql -U postgres -d hplm -f sql/init.sql
+   ```
+
+3. （可选）导入演示数据：
+   ```bash
+   psql -U postgres -d hplm -f sql/seed.sql
+   ```
+
+4. 修改 `config/db.ini` 中的数据库连接参数，匹配你的 PostgreSQL 配置。
+
+5. 配置 Qt6 编译环境（以 vcpkg 为例）：
+   ```bash
+   vcpkg install qt6[widgets,sql,charts,network]:x64-windows
+   ```
+
+6. CMake 构建：
+   ```bash
+   mkdir build && cd build
+   cmake .. -DCMAKE_TOOLCHAIN_FILE=[vcpkg-root]/scripts/buildsystems/vcpkg.cmake
+   cmake --build .
+   ```
 
 ## 启动方式
 
-<!-- 说明如何启动系统 -->
-
 ```bash
-（启动命令）
+cd build
+./HPLM.exe          # Windows
+# 或
+./HPLM              # Linux
 ```
+
+程序启动时自动读取 `config/db.ini` 连接数据库，首次运行会弹出数据库配置对话框。
 
 ## 项目结构
 
-<!-- 简要说明 src/ 目录下的代码组织方式 -->
-
 ```
 06_src/
-├── README.md       -- 本文件
-├── src/            -- 源代码
-│   ├── ...         -- （说明各模块/文件的职责）
-│   └── ...
-├── config/         -- 配置文件
-│   └── ...         -- （说明配置文件内容）
-└── sql/            -- SQL脚本
-    ├── init.sql    -- 数据库初始化脚本（建表）
-    └── seed.sql    -- 测试数据（可选）
+├── README.md                   -- 本文件
+├── CMakeLists.txt              -- CMake 构建脚本
+├── config/
+│   └── db.ini                  -- 数据库连接配置（QSettings 格式）
+├── sql/
+│   ├── init.sql                -- 数据库初始化脚本（18 张表建表）
+│   └── seed.sql                -- 演示数据
+└── src/
+    ├── main.cpp                -- 程序入口
+    ├── db/
+    │   ├── DatabaseManager.h/cpp   -- 数据库连接单例
+    │   └── repository/             -- 数据访问层（18 个 Repository）
+    ├── service/                    -- 业务逻辑层（6 个 Service）
+    └── ui/                         -- 界面层（MainWindow + 8 个页面）
 ```
