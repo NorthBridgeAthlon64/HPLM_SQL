@@ -3,6 +3,8 @@
 #include "db/repository/RepairMaterialRepo.h"
 #include "db/repository/CustomerRepo.h"
 #include "db/repository/ProductVersionRepo.h"
+#include "db/repository/ProductRepo.h"
+#include "db/repository/ComponentRepo.h"
 #include "service/RepairService.h"
 #include <QDialog>
 #include <QFormLayout>
@@ -13,6 +15,10 @@
 #include <QDoubleSpinBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QLineEdit>
+#include <QComboBox>
+#include <QLabel>
+#include <QDate>
 
 RepairPage::RepairPage(QSqlDatabase &db, QWidget *p)
     : QWidget(p), m_db(db)

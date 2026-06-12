@@ -101,6 +101,9 @@ set(HEADERS
 # 可执行文件
 qt_add_executable(HPLM ${SOURCES} ${HEADERS})
 
+# 添加 src/ 为 include 目录，使 repo/service/ui 之间的 #include "db/..." 能正确解析
+target_include_directories(HPLM PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # 链接 Qt6 库
 target_link_libraries(HPLM PRIVATE
     Qt6::Widgets

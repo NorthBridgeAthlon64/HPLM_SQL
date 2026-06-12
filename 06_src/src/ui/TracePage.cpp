@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QLabel>
 
 TracePage::TracePage(QSqlDatabase &db, QWidget *p) : QWidget(p), m_db(db)
 {

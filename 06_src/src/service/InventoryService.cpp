@@ -1,4 +1,5 @@
 #include "InventoryService.h"
+#include "db/DatabaseManager.h"
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QDebug>
@@ -9,7 +10,7 @@ InventoryService::InventoryService(QSqlDatabase &db, QObject *p)
 bool InventoryService::inbound(const QString &txNo, int componentId, int warehouseId,
                                 int quantity, double unitPrice, int operatorId)
 {
-    QSqlDatabase &db = m_compRepo.m_db;
+    QSqlDatabase &db = DatabaseManager::instance().db();
     db.transaction();
 
     // 1. 插入库存流水

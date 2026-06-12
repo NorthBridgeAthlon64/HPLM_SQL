@@ -1,6 +1,6 @@
 #include "ProductRepo.h"
 #include <QSqlError>
-ProductRepo::ProductRepo(QSqlDatabase &db, QObject *p) : QObject(p), m_db(db) {}
+ProductRepo::ProductRepo(QSqlDatabase &db) : m_db(db) {}
 Product ProductRepo::rowToProduct(const QSqlQuery &q) {
     Product p;
     p.productId=q.value("product_id").toInt(); p.productCode=q.value("product_code").toString();

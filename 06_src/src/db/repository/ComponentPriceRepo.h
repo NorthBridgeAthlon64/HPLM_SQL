@@ -1,5 +1,8 @@
 #pragma once
-#include <QObject>
-class QSqlDatabase;
-class ComponentPriceRepo : public QObject { Q_OBJECT public: explicit ComponentPriceRepo(QSqlDatabase &db, QObject *p = nullptr); QSqlDatabase &m_db; };
-
+#include <QSqlDatabase>
+class ComponentPriceRepo {
+public:
+    explicit ComponentPriceRepo(QSqlDatabase &db);
+private:
+    QSqlDatabase &m_db;
+};

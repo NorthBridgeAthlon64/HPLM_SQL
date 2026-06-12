@@ -12,6 +12,8 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QLabel>
+#include <QLineEdit>
+#include <QComboBox>
 
 ProductVersionPage::ProductVersionPage(QSqlDatabase &db, QWidget *parent)
     : QWidget(parent), m_db(db)

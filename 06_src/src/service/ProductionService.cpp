@@ -1,4 +1,5 @@
 #include "ProductionService.h"
+#include "db/DatabaseManager.h"
 #include <QSqlDatabase>
 #include <QDebug>
 
@@ -12,7 +13,7 @@ QList<BOMItem> ProductionService::getBOM(int versionId)
 
 bool ProductionService::createBatch(ProductionBatch &batch, QStringList &shortageList)
 {
-    QSqlDatabase &db = m_batchRepo.m_db;
+    QSqlDatabase &db = DatabaseManager::instance().db();
 
     // 1. 获取 BOM 清单
     QList<BOMItem> bomList = m_bomRepo.findByVersion(batch.versionId);

@@ -1,4 +1,5 @@
 #include "RepairService.h"
+#include "db/DatabaseManager.h"
 #include <QSqlDatabase>
 #include <QDate>
 #include <QDebug>
@@ -9,7 +10,7 @@ RepairService::RepairService(QSqlDatabase &db, QObject *p)
 bool RepairService::addRepairMaterial(int repairId, int componentId, int warehouseId,
                                        int quantity, double unitPrice, int operatorId)
 {
-    QSqlDatabase &db = m_repairRepo.m_db;
+    QSqlDatabase &db = DatabaseManager::instance().db();
 
     // 检查库存
     Inventory inv = m_invRepo.findByComponentAndWarehouse(componentId, warehouseId);

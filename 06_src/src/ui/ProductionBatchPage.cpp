@@ -1,6 +1,7 @@
 #include "ProductionBatchPage.h"
 #include "db/repository/ProductionBatchRepo.h"
 #include "db/repository/ProductVersionRepo.h"
+#include "db/repository/ProductRepo.h"
 #include "db/repository/BatchMaterialRepo.h"
 #include "db/repository/TestRecordRepo.h"
 #include "service/ProductionService.h"
@@ -12,6 +13,10 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QLineEdit>
+#include <QComboBox>
+#include <QLabel>
+#include <QDate>
 
 ProductionBatchPage::ProductionBatchPage(QSqlDatabase &db, QWidget *p)
     : QWidget(p), m_db(db)
