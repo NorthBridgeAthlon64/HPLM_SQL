@@ -20,6 +20,7 @@ private slots:
     void onAddBOM();
     void onEditBOM();
     void onDeleteBOM();
+    void onImportBOM();
 
 private:
     void loadBOM(int versionId);

@@ -3,6 +3,9 @@
 #include <QMainWindow>
 #include <QStackedWidget>
 #include <QTabWidget>
+#include <QMenuBar>
+#include <QMenu>
+#include <QAction>
 #include <QStatusBar>
 #include <QLabel>
 #include "db/repository/EmployeeRepo.h"
@@ -24,9 +27,11 @@ public:
 
 private slots:
     void onLoginSucceeded(const Employee &user);
+    void onExportBOM();
 
 private:
     void setupMainTabs();
+    void setupMenuBar();
 
     QStackedWidget *m_stack;
     LoginPage      *m_loginPage;

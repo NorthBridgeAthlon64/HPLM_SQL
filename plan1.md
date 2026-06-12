@@ -137,19 +137,46 @@ public:
 };
 ```
 
-## 六、匹配算法
+## 六、匹配算法（已修正）
 
-1. 优先用 Comment 精确匹配 `Component.name`
-2. 若精确匹配命中多条，再用 Footprint + Value 匹配 `Component.specification`
-3. 若只有 Comment 命中但规格不同 → Partial（🟡）
-4. 无命中 → Missing（🔴）
+### 6.1 匹配策略（三级递进）
 
-```sql
--- 精确匹配
-SELECT * FROM Component WHERE name ILIKE :comment AND specification ILIKE :spec;
--- 模糊匹配
-SELECT * FROM Component WHERE name ILIKE :comment;
 ```
+第1级: Manufacturer Part 精确匹配
+  SELECT * FROM Component WHERE component_code = :mfrPart
+  → 命中即 🟢 Matched（制造商型号是最可靠的匹配凭据）
+
+第2级: Comment 精确匹配
+  SELECT * FROM Component WHERE name = :comment
+  → 命中即 🟢 Matched
+
+第3级: Comment + Footprint + Value 组合匹配
+  SELECT * FROM Component WHERE name = :comment
+    AND specification ILIKE '%'||:footprint||'%'
+    AND specification ILIKE '%'||:value||'%'
+  → 命中即 🟡 Partial（名称一致但规格略有差异）
+
+全部未命中 → 🔴 Missing
+```
+
+### 6.2 为什么不用 ILIKE
+
+| BOM 行 | ILIKE '%10K%' | 实际想要 |
+|--------|:---:|------|
+| Comment = "10K" | 匹配到"10KΩ贴片电阻" ✅、也匹配到"PT100K传感器" ❌ | 假阳性 |
+| Comment = "1K" | 匹配到"1KΩ电阻" ✅、也匹配到"10KΩ电阻" ❌、"LM1117-1.2V" ❌ | 多假阳性 |
+
+ILIKE 子串匹配在元器件名称中会产生大量假阳性——电阻值"1K"会成为"10K""100K""1KΩ"的子串。改用精确 `=` 匹配，确保只有"名称完全一致"才判定为已匹配。
+
+### 6.3 修正前后对比
+
+| | 旧方案 (ILIKE) | 新方案 (精确+) |
+|------|:---:|:---:|
+| Comment 匹配 | `name ILIKE '%comment%'` | `name = :comment` |
+| 假阳性风险 | 高（1K 匹配到 10K） | 无 |
+| Manufacturer Part | 未使用 | 第1级优先匹配 |
+| Footprint+Value | 无 | 第3级辅助验证 |
+| 准确率估算 | ~30% | ~70% |
 
 ---
 
@@ -306,15 +333,90 @@ MainWindow 顶部菜单栏："文件" → "导出 BOM" → 弹出产品版本选
 
 ---
 
-## 十三、注意事项
+## 十三、风险评估与对策
+
+### 13.1 风险矩阵
+
+| # | 风险 | 严重度 | 概率 | 对策 |
+|---|------|:---:|:---:|------|
+| R1 | ILIKE 子串假阳性（1K→10K） | 高 | 高 | 已修正为精确 `=` 匹配（见六） |
+| R2 | 重复导入创建重复 Component | 高 | 中 | generateComponentCode() 前查重，已存在则复用 |
+| R3 | 导入后库存为 0，触发 Dashboard 告警 | 中 | 中 | 显式设 `min_stock = 0`，避免误告警 |
+| R4 | 仓库 ID 硬编码为 1，仓库不存在时失败 | 中 | 低 | 执行前校验仓库存在，不存在则弹窗提示 |
+| R5 | 导入 Dialog 关闭后状态残留 | 低 | 低 | Dialog 析构时自动清理，不持久化临时状态 |
+| R6 | comment 列含 Tab 字符 | 低 | 极低 | 嘉立创 EDA 不输出含 Tab 的 Comment，忽略 |
+| R7 | 导出 specification 拆分不可逆 | 低 | — | 已知不精确，导出只读不写数据库 |
+| R8 | 没有 undo，提交后无法回滚 | 中 | — | 事务原子性保证（全成功/全回滚），导入前二次确认弹窗 |
+| R9 | 导入完成后用户无反馈 | 低 | 高 | 弹窗显示汇总：✅ 新建 N 个元器件, 📋 导入 M 行 BOM |
+
+### 13.2 边缘情况处理
+
+#### 空 Manufacturer Part 的元器件
+```
+嘉立创 BOM 第 2 行: "10μF" "C1206" (无 Manufacturer Part)
+→ generateComponentCode() 生成 "AUTO-C1206-10μF"
+→ 下一次导入遇到同样的 "10μF" "C1206" 时，name 精确匹配 → 复用
+→ 如果 name 不匹配（如 "10μF" vs "10μF 16V"），code 查重可兜底
+```
+
+#### 仓库不存在的防御
+```cpp
+// executeImport() 开头
+int warehouseId = 1;
+QSqlQuery q(m_db);
+q.exec("SELECT COUNT(*) FROM Warehouse WHERE warehouse_id = 1");
+if (q.next() && q.value(0).toInt() == 0) {
+    log.append("错误: 仓库 WH-A01 不存在，请先创建仓库");
+    return false;
+}
+```
+
+#### 重复 Component 检测
+```cpp
+QString code = generateComponentCode(row);
+QSqlQuery q(m_db);
+q.prepare("SELECT component_id FROM Component WHERE component_code = :code");
+q.bindValue(":code", code);
+if (q.exec() && q.next()) {
+    // 已存在，复用
+    row.matchedComponentId = q.value(0).toInt();
+} else {
+    // 新建
+}
+```
+
+#### 导入后汇总反馈
+```
+导入完成！
+✅ 新建元器件: 43 个
+📋 导入 BOM 行: 60 行
+📦 供应商自动创建: 12 个
+⚠ 库存为 0，请在元器件管理页补货
+```
+
+### 13.3 用户体验优化
+
+| 优化 | 实现 |
+|------|------|
+| 导入前二次确认 | "将新建 43 个元器件，导入 60 行 BOM，确认继续？" |
+| 导入完成汇总 | 弹窗显示 ✅ 新建 / 📋 导入 / 📦 供应商 数量 |
+| 校验失败详情 | QMessageBox::warning 列出具体行号和原因，而非只显示"失败" |
+| BOMImportDialog 非模态 | 使用 exec() 模态对话框，关闭即取消，不留临时状态 |
+| 自动 code 可读 | "LCSC-" + footprint + "-" + comment，如 "LCSC-C0603-100nF" |
+
+---
+
+## 十四、注意事项
 
 1. Designator 含逗号（如 C1,C20），**不能**用逗号 split CSV 列 — 必须用 Tab 分隔
-2. 部分行 Manufacturer Part 为空，此时自动生成 `component_code = "AUTO-" + footprint + "-" + comment` 简化处理
+2. 部分行 Manufacturer Part 为空，此时自动生成 `component_code = "AUTO-" + footprint + "-" + comment` 简化处理；生成前查重，已存在则复用
 3. 数量列可能为空，此时默认 `quantity = 1`
 4. Comment 列可能含逗号（如 "Y电容,222M,250V,脚距7.5MM"），说明不能用逗号分列
-5. 导入后库存初始为 0，用户在元器件管理页手动入库补货
+5. 导入后库存初始为 0，`min_stock` 显式设为 0，用户在元器件管理页手动入库补货
 6. 两个测试文件均可通过嘉立创 EDA → 导出 BOM 获得，10 列 Tab 分隔是嘉立创的标准格式
 7. ~50% 的通用料（电阻、电容）无 Manufacturer Part/Manufacturer 是正常现象，不影响导入
 8. **校验失败整批拒绝**，不写入任何数据，锁死"导入全部"按钮直到校验全部通过
 9. 导出格式与嘉立创 EDA 导出的 BOM **完全一致**，可实现"导入→编辑→导出→再导入"闭环
 10. 导出时规格列（specification）按空格拆分为 Footprint + Value，若无空格则只填 Footprint
+11. 匹配改为精确 `=` 而非 ILIKE，Manufacturer Part 作为第1级优先凭据
+12. 二次确认对话框防止误操作，导入后汇总弹窗给用户明确反馈

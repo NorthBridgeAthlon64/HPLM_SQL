@@ -8,6 +8,15 @@
 #include "TracePage.h"
 #include "FeedbackPage.h"
 #include "db/DatabaseManager.h"
+#include "service/BOMExportService.h"
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QComboBox>
+#include <QLabel>
+#include <QDialogButtonBox>
+#include <QSqlQuery>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -37,6 +46,7 @@ void MainWindow::onLoginSucceeded(const Employee &user)
 {
     if (!m_tabWidget) {
         setupMainTabs();
+        setupMenuBar();
     }
 
     m_userLabel->setText(QStringLiteral("当前用户: %1 (%2)").arg(user.name, user.position));
@@ -71,4 +81,59 @@ void MainWindow::setupMainTabs()
     // 替换占位
     m_stack->removeWidget(m_stack->widget(1));
     m_stack->addWidget(m_tabWidget);
+}
+
+void MainWindow::setupMenuBar()
+{
+    auto *fileMenu = menuBar()->addMenu(QStringLiteral("文件(&F)"));
+
+    auto *exportAction = fileMenu->addAction(QStringLiteral("导出 BOM..."));
+    connect(exportAction, &QAction::triggered, this, &MainWindow::onExportBOM);
+
+    fileMenu->addSeparator();
+    auto *exitAction = fileMenu->addAction(QStringLiteral("退出(&X)"));
+    connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
+}
+
+void MainWindow::onExportBOM()
+{
+    auto &db = DatabaseManager::instance().db();
+    BOMExportService exportSvc(db);
+
+    // 收集所有版本供用户选择
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("导出 BOM - 选择版本"));
+    auto *layout = new QVBoxLayout(&dlg);
+
+    auto *combo = new QComboBox();
+    QSqlQuery q(db);
+    q.exec("SELECT pv.version_id, p.name || ' ' || pv.version_number AS label "
+           "FROM ProductVersion pv JOIN Product p ON pv.product_id = p.product_id "
+           "ORDER BY p.product_id, pv.version_number");
+    while (q.next())
+        combo->addItem(q.value("label").toString(), q.value("version_id"));
+    layout->addWidget(new QLabel(QStringLiteral("选择要导出的产品版本:")));
+    layout->addWidget(combo);
+
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    layout->addWidget(bb);
+
+    if (dlg.exec() != QDialog::Accepted || combo->currentData().toInt() <= 0)
+        return;
+
+    int versionId = combo->currentData().toInt();
+    QString defaultName = exportSvc.versionDisplayName(versionId).replace(' ', '_') + "_BOM.csv";
+    QString filePath = QFileDialog::getSaveFileName(this, QStringLiteral("保存 BOM 文件"),
+        defaultName, QStringLiteral("TSV 文件 (*.csv)"));
+    if (filePath.isEmpty()) return;
+
+    QString error;
+    if (exportSvc.exportToCSV(versionId, filePath, error)) {
+        QMessageBox::information(this, QStringLiteral("导出成功"),
+            QStringLiteral("BOM 已导出到:\n%1").arg(filePath));
+    } else {
+        QMessageBox::warning(this, QStringLiteral("导出失败"), error);
+    }
 }

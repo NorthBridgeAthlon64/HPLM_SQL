@@ -44,6 +44,8 @@ set(SOURCES
     src/service/RepairService.cpp
     src/service/TraceService.cpp
     src/service/FeedbackService.cpp
+    src/service/BOMImportService.cpp
+    src/service/BOMExportService.cpp
 
     # ui 层（MainWindow + 8 个页面）
     src/ui/MainWindow.cpp
@@ -55,6 +57,7 @@ set(SOURCES
     src/ui/RepairPage.cpp
     src/ui/TracePage.cpp
     src/ui/FeedbackPage.cpp
+    src/ui/BOMImportDialog.cpp
 )
 
 # 头文件（仅用于 IDE 导航，非必需但推荐）
@@ -86,6 +89,8 @@ set(HEADERS
     src/service/RepairService.h
     src/service/TraceService.h
     src/service/FeedbackService.h
+    src/service/BOMImportService.h
+    src/service/BOMExportService.h
 
     src/ui/MainWindow.h
     src/ui/LoginPage.h
@@ -96,6 +101,7 @@ set(HEADERS
     src/ui/RepairPage.h
     src/ui/TracePage.h
     src/ui/FeedbackPage.h
+    src/ui/BOMImportDialog.h
 )
 
 # 可执行文件

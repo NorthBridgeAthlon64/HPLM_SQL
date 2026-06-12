@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS ProductBOM (
     version_id      INT NOT NULL REFERENCES ProductVersion(version_id) ON DELETE CASCADE,
     component_id    INT NOT NULL REFERENCES Component(component_id) ON DELETE RESTRICT,
     quantity        INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
-    position        VARCHAR(50),
+    position        VARCHAR(500),
     UNIQUE(version_id, component_id)
 );
 
