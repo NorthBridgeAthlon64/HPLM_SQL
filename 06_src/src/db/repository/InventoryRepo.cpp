@@ -20,13 +20,22 @@ Inventory InventoryRepo::findByComponentAndWarehouse(int componentId, int wareho
 }
 bool InventoryRepo::addQuantity(int componentId, int warehouseId, int delta, double unitCost) {
     QSqlQuery q(m_db);
-    q.prepare("INSERT INTO Inventory (component_id, warehouse_id, quantity, avg_cost) VALUES (:cid, :wid, :qty, :cost) ON CONFLICT (component_id, warehouse_id) DO UPDATE SET quantity = Inventory.quantity + :qty2, avg_cost = CASE WHEN :qty3 < 0 THEN Inventory.avg_cost ELSE (Inventory.avg_cost * Inventory.quantity + :cost2 * :cost3) / GREATEST(Inventory.quantity + :qty4, 1) END");
-    q.bindValue(":cid", componentId); q.bindValue(":wid", warehouseId);
-    q.bindValue(":qty", delta > 0 ? delta : 0); q.bindValue(":qty2", delta);
-    q.bindValue(":qty3", delta); q.bindValue(":qty4", delta);
-    q.bindValue(":cost", unitCost); q.bindValue(":cost2", unitCost);
-    q.bindValue(":cost3", delta);
-    if (!q.exec()) { qWarning() << "InventoryRepo::addQuantity" << q.lastError().text(); return false; }
+    // 简化：只在入库时更新 avg_cost（delta > 0），出库时不更新
+    if (delta > 0) {
+        q.prepare("INSERT INTO Inventory (component_id, warehouse_id, quantity, reserved_quantity, avg_cost) VALUES (:cid, :wid, :qty, 0, :cost) ON CONFLICT (component_id, warehouse_id) DO UPDATE SET quantity = Inventory.quantity + :qty2, avg_cost = (Inventory.avg_cost * Inventory.quantity + :cost2 * :cost3) / GREATEST(Inventory.quantity + :qty4, 1)");
+        q.bindValue(":qty", delta);
+    } else {
+        q.prepare("INSERT INTO Inventory (component_id, warehouse_id, quantity, reserved_quantity) VALUES (:cid, :wid, :qty, 0) ON CONFLICT (component_id, warehouse_id) DO UPDATE SET quantity = Inventory.quantity + :qty2");
+        q.bindValue(":qty", 0);
+    }
+    q.bindValue(":cid", componentId);
+    q.bindValue(":wid", warehouseId);
+    q.bindValue(":qty2", delta);
+    q.bindValue(":cost", unitCost);
+    q.bindValue(":cost2", unitCost);
+    q.bindValue(":cost3", qAbs(delta));
+    q.bindValue(":qty4", qAbs(delta));
+    if (!q.exec()) { qWarning() << "InventoryRepo::addQuantity failed:" << q.lastError().text(); return false; }
     return true;
 }
 bool InventoryRepo::reserveQuantity(int componentId, int warehouseId, int qty) {

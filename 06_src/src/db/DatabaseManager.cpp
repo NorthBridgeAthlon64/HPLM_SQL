@@ -67,20 +67,55 @@ bool DatabaseManager::execSqlFile(const QString &filePath)
     QString sql = in.readAll();
     file.close();
 
-    // 按 ; 分割 SQL 语句，并过滤空语句和纯注释行
-    // 简化处理：按 ; 拆分，忽略空行
+    // 分离 SQL 语句：按 ; 分割，但保护 $$ ... $$ 及 $tag$ ... $tag$ 块不被拆分
     QStringList statements;
-    // 先去掉行注释再分割，避免行内 ; 干扰
-    QString cleaned;
-    for (const QString &line : sql.split('\n')) {
-        QString trimmed = line.trimmed();
-        if (trimmed.startsWith("--") || trimmed.isEmpty()) {
+    int i = 0;
+    int len = sql.length();
+    int stmtStart = 0;
+    bool inDollar = false;
+    QString dollarTag;           // $$ 或 $tag$
+
+    while (i < len) {
+        if (!inDollar && sql[i] == '$') {
+            // 检查是否是 $$ 或 $tag$
+            int j = i + 1;
+            while (j < len && sql[j] != '$') j++;
+            if (j < len && sql[j] == '$') {
+                inDollar = true;
+                dollarTag = sql.mid(i, j - i + 1); // $tag$
+                i = j + 1;
+                continue;
+            }
+        }
+
+        if (inDollar) {
+            // 在 dollar-quoted 块内，找匹配的结束标记
+            if (sql[i] == '$') {
+                // 尝试匹配结束标记
+                if (i + dollarTag.length() <= len &&
+                    sql.mid(i, dollarTag.length()) == dollarTag) {
+                    inDollar = false;
+                    i += dollarTag.length();
+                    continue;
+                }
+            }
+            i++;
             continue;
         }
-        cleaned += trimmed + ' ';
-    }
 
-    statements = cleaned.split(';', Qt::SkipEmptyParts);
+        // 不在 dollar 块内，遇到 ; 就是语句边界
+        if (sql[i] == ';') {
+            QString stmt = sql.mid(stmtStart, i - stmtStart).trimmed();
+            if (!stmt.isEmpty() && !stmt.startsWith("--"))
+                statements.append(stmt);
+            stmtStart = i + 1;
+        }
+        i++;
+    }
+    // 最后一段（无 ; 结尾的）
+    QString lastStmt = sql.mid(stmtStart).trimmed();
+    if (!lastStmt.isEmpty() && !lastStmt.startsWith("--"))
+        statements.append(lastStmt);
 
     QSqlQuery query(m_db);
     int total = statements.size();
@@ -91,14 +126,11 @@ bool DatabaseManager::execSqlFile(const QString &filePath)
         if (s.isEmpty()) continue;
 
         if (!query.exec(s)) {
-            // 忽略已存在的对象错误（幂等执行）
             QString err = query.lastError().text();
             if (err.contains("already exists") || err.contains("duplicate key")) {
-                // 幂等执行，忽略
                 continue;
             }
-            qWarning() << "SQL execution warning:" << err;
-            qWarning() << "Statement:" << s.left(120);
+            qWarning() << "SQL execution warning:" << err << "\n  Statement:" << s.left(120);
         } else {
             success++;
         }

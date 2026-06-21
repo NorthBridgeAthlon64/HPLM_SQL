@@ -15,7 +15,11 @@ ProductionBatch ProductionBatchRepo::rowToBatch(const QSqlQuery &q) {
 }
 QList<ProductionBatch> ProductionBatchRepo::findAll() {
     QList<ProductionBatch> list; QSqlQuery q(m_db);
-    q.exec("SELECT pb.*, pv.version_number, p.name AS product_name FROM ProductionBatch pb JOIN ProductVersion pv ON pb.version_id=pv.version_id JOIN Product p ON pv.product_id=p.product_id ORDER BY pb.production_date DESC");
+    bool ok = q.exec("SELECT pb.*, pv.version_number, p.name AS product_name FROM ProductionBatch pb JOIN ProductVersion pv ON pb.version_id=pv.version_id JOIN Product p ON pv.product_id=p.product_id ORDER BY pb.production_date DESC");
+    if (!ok) {
+        qWarning() << "ProductionBatchRepo::findAll() failed:" << q.lastError().text();
+        return list;
+    }
     while(q.next()) list.append(rowToBatch(q));
     return list;
 }

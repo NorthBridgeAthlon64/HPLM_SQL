@@ -17,6 +17,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QDate>
+#include <QDebug>
 
 ProductionBatchPage::ProductionBatchPage(QSqlDatabase &db, QWidget *p)
     : QWidget(p), m_db(db)
@@ -63,7 +64,12 @@ void ProductionBatchPage::refresh()
 {
     ProductionBatchRepo repo(m_db);
     QList<ProductionBatch> list = repo.findAll();
+    qDebug() << "ProductionBatchPage::refresh() found" << list.size() << "batches";
+
     m_batchTable->setRowCount(0);
+    m_detailTable->setRowCount(0);
+    m_testTable->setRowCount(0);
+
     for (int i = 0; i < list.size(); i++) {
         const auto &b = list[i];
         m_batchTable->insertRow(i);
@@ -75,6 +81,7 @@ void ProductionBatchPage::refresh()
         m_batchTable->setItem(i, 5, new QTableWidgetItem(b.qualityStatus));
         m_batchTable->setItem(i, 6, new QTableWidgetItem(b.productionDate.toString("yyyy-MM-dd")));
     }
+    m_batchTable->viewport()->update();
 }
 
 void ProductionBatchPage::onCreateBatch()

@@ -12,6 +12,7 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QSqlQuery>
 
 ComponentPage::ComponentPage(QSqlDatabase &db, QWidget *parent)
     : QWidget(parent), m_db(db)
@@ -49,10 +50,11 @@ ComponentPage::ComponentPage(QSqlDatabase &db, QWidget *parent)
     layout->addLayout(btnLayout);
 
     // 表格
-    m_table = new QTableWidget(0, 8, this);
+    m_table = new QTableWidget(0, 9, this);
     m_table->setHorizontalHeaderLabels({
         "ID", QStringLiteral("编码"), QStringLiteral("名称"), QStringLiteral("规格"),
-        QStringLiteral("单位"), QStringLiteral("库存量"), QStringLiteral("价格"), QStringLiteral("供应商")
+        QStringLiteral("单位"), QStringLiteral("库存量"), QStringLiteral("价格"),
+        QStringLiteral("最低库存"), QStringLiteral("供应商")
     });
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -95,7 +97,8 @@ void ComponentPage::refresh()
         m_table->setItem(i, 4, new QTableWidgetItem(c.unit));
         m_table->setItem(i, 5, new QTableWidgetItem(QString::number(c.inventoryQuantity, 'f', 0)));
         m_table->setItem(i, 6, new QTableWidgetItem(QString::number(c.currentPrice, 'f', 2)));
-        m_table->setItem(i, 7, new QTableWidgetItem(c.supplierName));
+        m_table->setItem(i, 7, new QTableWidgetItem(QString::number(c.minStock)));
+        m_table->setItem(i, 8, new QTableWidgetItem(c.supplierName));
     }
 }
 
@@ -116,7 +119,8 @@ void ComponentPage::onSearch()
         m_table->setItem(i, 4, new QTableWidgetItem(c.unit));
         m_table->setItem(i, 5, new QTableWidgetItem(QString::number(c.inventoryQuantity, 'f', 0)));
         m_table->setItem(i, 6, new QTableWidgetItem(QString::number(c.currentPrice, 'f', 2)));
-        m_table->setItem(i, 7, new QTableWidgetItem(c.supplierName));
+        m_table->setItem(i, 7, new QTableWidgetItem(QString::number(c.minStock)));
+        m_table->setItem(i, 8, new QTableWidgetItem(c.supplierName));
     }
 }
 
@@ -180,7 +184,8 @@ void ComponentPage::onEdit()
     auto *nameEdit = new QLineEdit(m_table->item(row, 2)->text());
     auto *specEdit = new QLineEdit(m_table->item(row, 3)->text());
     auto *unitEdit = new QLineEdit(m_table->item(row, 4)->text());
-    auto *minSpin  = new QSpinBox(); minSpin->setRange(0, 999999); minSpin->setValue(0);
+    auto *minSpin  = new QSpinBox(); minSpin->setRange(0, 999999);
+    minSpin->setValue(m_table->item(row, 7)->text().toInt());
     auto *priceSpin = new QDoubleSpinBox(); priceSpin->setRange(0, 999999); priceSpin->setDecimals(2);
     priceSpin->setValue(m_table->item(row, 6)->text().toDouble());
     auto *supCombo = new QComboBox();
@@ -188,10 +193,15 @@ void ComponentPage::onEdit()
     for (const Supplier &s : sRepo.findAll())
         supCombo->addItem(s.name, s.supplierId);
 
+    // 库存量（刷新编辑框时同步显示）
+    auto *stockSpin = new QSpinBox(); stockSpin->setRange(0, 999999);
+    stockSpin->setValue(m_table->item(row, 5)->text().toInt());
+
     f->addRow(QStringLiteral("编码："), codeEdit);
     f->addRow(QStringLiteral("名称："), nameEdit);
     f->addRow(QStringLiteral("规格："), specEdit);
     f->addRow(QStringLiteral("单位："), unitEdit);
+    f->addRow(QStringLiteral("库存量："), stockSpin);
     f->addRow(QStringLiteral("最低库存："), minSpin);
     f->addRow(QStringLiteral("当前价格："), priceSpin);
     f->addRow(QStringLiteral("供应商："), supCombo);
@@ -214,8 +224,27 @@ void ComponentPage::onEdit()
     c.supplierId    = supCombo->currentData().toInt();
 
     ComponentRepo repo(m_db);
-    if (repo.update(c)) refresh();
-    else QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("编辑失败"));
+    if (repo.update(c)) {
+        // 同步更新 Inventory 表库存量
+        int newQty = stockSpin->value();
+        QSqlQuery iq(m_db);
+        iq.prepare("UPDATE Inventory SET quantity = :qty WHERE component_id = :cid AND warehouse_id = 1");
+        iq.bindValue(":qty", newQty);
+        iq.bindValue(":cid", id);
+        iq.exec();
+
+        // 如果该元器件在 Inventory 中没有记录（新创建的），插入一条
+        if (iq.numRowsAffected() == 0) {
+            iq.prepare("INSERT INTO Inventory (component_id, warehouse_id, quantity) VALUES (:cid, 1, :qty) ON CONFLICT (component_id, warehouse_id) DO UPDATE SET quantity = :qty2");
+            iq.bindValue(":cid", id);
+            iq.bindValue(":qty", newQty);
+            iq.bindValue(":qty2", newQty);
+            iq.exec();
+        }
+        refresh();
+    } else {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("编辑失败"));
+    }
 }
 
 void ComponentPage::onDelete()
@@ -226,11 +255,18 @@ void ComponentPage::onDelete()
     QString name = m_table->item(row, 2)->text();
 
     if (QMessageBox::question(this, QStringLiteral("确认删除"),
-        QStringLiteral("确定删除元器件 \"%1\" 吗？").arg(name)) == QMessageBox::Yes)
+        QStringLiteral("确定删除元器件 \"%1\" 吗？\n\n注意：如果该元器件已被 BOM、生产批次或维修工单引用，则无法删除。").arg(name)) == QMessageBox::Yes)
     {
         ComponentRepo repo(m_db);
         if (repo.remove(id)) refresh();
-        else QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("删除失败"));
+        else QMessageBox::warning(this, QStringLiteral("删除失败"),
+            QStringLiteral("无法删除 \"%1\"。\n\n"
+            "该元器件可能已被以下内容引用：\n"
+            "• 产品 BOM 清单\n"
+            "• 生产批次投料\n"
+            "• 维修换料记录\n"
+            "• 库存记录\n\n"
+            "请先删除所有关联记录后再删除此元器件。").arg(name));
     }
 }
 
