@@ -19,6 +19,7 @@ private slots:
     void onEdit();
     void onDelete();
     void onDoubleClick(int row, int col);
+    void onImportFromBOM();
 
 private:
     QSqlDatabase &m_db;

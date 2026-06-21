@@ -2,6 +2,7 @@
 #include "db/repository/ComponentRepo.h"
 #include "db/repository/SupplierRepo.h"
 #include "db/repository/InventoryTransactionRepo.h"
+#include "service/BOMImportService.h"
 #include <QDialog>
 #include <QFormLayout>
 #include <QDialogButtonBox>
@@ -10,6 +11,7 @@
 #include <QDate>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
 
 ComponentPage::ComponentPage(QSqlDatabase &db, QWidget *parent)
     : QWidget(parent), m_db(db)
@@ -37,9 +39,12 @@ ComponentPage::ComponentPage(QSqlDatabase &db, QWidget *parent)
     auto *addBtn = new QPushButton(QStringLiteral("新增"));
     auto *editBtn = new QPushButton(QStringLiteral("编辑"));
     auto *deleteBtn = new QPushButton(QStringLiteral("删除"));
+    auto *importBomBtn = new QPushButton(QStringLiteral("从BOM导入"));
+    importBomBtn->setStyleSheet("color: #0066cc; font-weight: bold;");
     btnLayout->addWidget(addBtn);
     btnLayout->addWidget(editBtn);
     btnLayout->addWidget(deleteBtn);
+    btnLayout->addWidget(importBomBtn);
     btnLayout->addStretch();
     layout->addLayout(btnLayout);
 
@@ -61,6 +66,7 @@ ComponentPage::ComponentPage(QSqlDatabase &db, QWidget *parent)
     connect(addBtn, &QPushButton::clicked, this, &ComponentPage::onAdd);
     connect(editBtn, &QPushButton::clicked, this, &ComponentPage::onEdit);
     connect(deleteBtn, &QPushButton::clicked, this, &ComponentPage::onDelete);
+    connect(importBomBtn, &QPushButton::clicked, this, &ComponentPage::onImportFromBOM);
     connect(m_table, &QTableWidget::cellDoubleClicked, this, &ComponentPage::onDoubleClick);
 
     refresh();
@@ -262,4 +268,53 @@ void ComponentPage::onDoubleClick(int row, int)
     }
     layout->addWidget(t);
     dlg.exec();
+}
+
+void ComponentPage::onImportFromBOM()
+{
+    QString filePath = QFileDialog::getOpenFileName(
+        this, QStringLiteral("选择 BOM 文件"), QString(),
+        QStringLiteral("嘉立创 BOM 文件 (*.csv);;所有文件 (*)")
+    );
+    if (filePath.isEmpty()) return;
+
+    BOMImportService svc(m_db);
+    QString error;
+    QList<BOMRow> rows = svc.parseCSV(filePath, error);
+
+    if (rows.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("校验失败"),
+            QStringLiteral("BOM 文件校验未通过:\n%1").arg(error));
+        return;
+    }
+
+    svc.matchComponents(rows);
+
+    // 统计
+    int matched = 0, partial = 0, missing = 0;
+    for (const BOMRow &r : rows) {
+        switch (r.status) {
+        case BOMRow::Matched:  matched++;  break;
+        case BOMRow::Partial:  partial++;  break;
+        case BOMRow::Missing:  missing++;  break;
+        }
+    }
+
+    QString msg = QStringLiteral("BOM 文件解析结果:\n\n"
+        "🟢 已匹配: %1 行（数据库中已存在，跳过）\n"
+        "🟡 待确认: %2 行（名称匹配但规格不同）\n"
+        "🔴 需新建: %3 行\n\n"
+        "将创建 %4 个新元器件和关联供应商。\n继续？")
+        .arg(matched).arg(partial).arg(missing).arg(partial + missing);
+
+    if (QMessageBox::question(this, QStringLiteral("批量导入确认"), msg) != QMessageBox::Yes)
+        return;
+
+    QStringList log;
+    if (svc.createMissingComponents(rows, log)) {
+        QMessageBox::information(this, QStringLiteral("导入成功"), log.join('\n'));
+        refresh();
+    } else {
+        QMessageBox::warning(this, QStringLiteral("导入失败"), log.join('\n'));
+    }
 }

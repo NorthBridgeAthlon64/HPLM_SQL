@@ -380,6 +380,104 @@ bool BOMImportService::executeImport(int versionId, const QList<BOMRow> &rows, Q
 }
 
 // ============================================================
+// 仅创建元器件（不关联 BOM）
+// ============================================================
+
+bool BOMImportService::createMissingComponents(const QList<BOMRow> &rows, QStringList &log)
+{
+    QSqlDatabase &db = m_db;
+
+    int newComponents = 0;
+    int newSuppliers  = 0;
+    int skipped       = 0;
+
+    db.transaction();
+
+    for (const BOMRow &row : rows) {
+        // 已匹配的跳过
+        if (row.matchedComponentId > 0 && row.status == BOMRow::Matched) {
+            skipped++;
+            continue;
+        }
+
+        // 处理供应商
+        int supplierId = 0;
+        if (!row.manufacturer.isEmpty()) {
+            QSqlQuery sq(db);
+            sq.prepare("SELECT supplier_id FROM Supplier WHERE name = :name");
+            sq.bindValue(":name", row.manufacturer);
+            if (sq.exec() && sq.next()) {
+                supplierId = sq.value(0).toInt();
+            } else {
+                QString supCode = QStringLiteral("AUTO-%1").arg(
+                    QUuid::createUuid().toString(QUuid::Id128).left(8).toUpper());
+                sq.prepare("INSERT INTO Supplier (supplier_code, name, rating) "
+                           "VALUES (:code, :name, 3) RETURNING supplier_id");
+                sq.bindValue(":code", supCode);
+                sq.bindValue(":name", row.manufacturer);
+                if (sq.exec() && sq.next()) {
+                    supplierId = sq.value(0).toInt();
+                    newSuppliers++;
+                    log.append(QStringLiteral("  📦 自动创建供应商: %1").arg(row.manufacturer));
+                }
+            }
+        }
+
+        // 生成 code 并查重
+        QString code = generateComponentCode(row);
+        int seq = 0;
+        while (codeExists(code)) {
+            seq++;
+            code = generateComponentCode(row, seq);
+        }
+
+        QString spec;
+        if (!row.footprint.isEmpty() && !row.value.isEmpty())
+            spec = row.footprint + " " + row.value;
+        else if (!row.footprint.isEmpty())
+            spec = row.footprint;
+        else if (!row.value.isEmpty())
+            spec = row.value;
+
+        QSqlQuery cq(db);
+        cq.prepare("INSERT INTO Component (component_code, name, specification, unit, min_stock, current_price, supplier_id) "
+                    "VALUES (:code, :name, :spec, '个', 0, 0, :sid) RETURNING component_id");
+        cq.bindValue(":code", code);
+        cq.bindValue(":name", row.comment);
+        cq.bindValue(":spec", spec);
+        cq.bindValue(":sid",  supplierId > 0 ? supplierId : QVariant(QVariant::Int));
+        if (cq.exec() && cq.next()) {
+            int componentId = cq.value(0).toInt();
+            newComponents++;
+            log.append(QStringLiteral("  ✅ %1 (code=%2)").arg(row.comment, code));
+
+            // 初始化库存
+            QSqlQuery iq(db);
+            iq.prepare("INSERT INTO Inventory (component_id, warehouse_id, quantity, avg_cost) "
+                        "VALUES (:cid, 1, 0, NULL) ON CONFLICT (component_id, warehouse_id) DO NOTHING");
+            iq.bindValue(":cid", componentId);
+            iq.exec();
+        } else {
+            log.append(QStringLiteral("  ❌ 创建失败: %1 (%2)").arg(row.comment, cq.lastError().text()));
+            db.rollback();
+            return false;
+        }
+    }
+
+    db.commit();
+
+    log.prepend(QStringLiteral("批量导入完成！"));
+    log.append(QStringLiteral("--- 汇总 ---"));
+    log.append(QStringLiteral("✅ 新建元器件: %1 个").arg(newComponents));
+    log.append(QStringLiteral("⏭ 已存在跳过: %1 个").arg(skipped));
+    if (newSuppliers > 0)
+        log.append(QStringLiteral("📦 自动创建供应商: %1 个").arg(newSuppliers));
+    log.append(QStringLiteral("⚠ 库存为 0，请在元器件管理页手动入库补货"));
+
+    return true;
+}
+
+// ============================================================
 // 工具
 // ============================================================
 

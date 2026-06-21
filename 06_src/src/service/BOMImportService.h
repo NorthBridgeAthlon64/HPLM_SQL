@@ -49,6 +49,9 @@ public:
     /// @return true=全部成功, false=已回滚
     bool executeImport(int versionId, const QList<BOMRow> &rows, QStringList &log);
 
+    /// 仅创建缺失的元器件和供应商，不关联 BOM（用于元器件管理页批量导入）
+    bool createMissingComponents(const QList<BOMRow> &rows, QStringList &log);
+
     // ---- 工具 ----
 
     /// 自动生成 component_code（基于 Footprint + Comment + 序号）
