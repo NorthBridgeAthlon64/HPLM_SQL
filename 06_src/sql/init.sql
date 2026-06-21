@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS VersionCost (
 -- 7. 元器件表
 CREATE TABLE IF NOT EXISTS Component (
     component_id    SERIAL PRIMARY KEY,
-    component_code  VARCHAR(50) NOT NULL UNIQUE,
+    component_code  VARCHAR(200) NOT NULL UNIQUE,
     name            VARCHAR(100) NOT NULL,
     specification   VARCHAR(200),
     unit            VARCHAR(20) NOT NULL DEFAULT '个',

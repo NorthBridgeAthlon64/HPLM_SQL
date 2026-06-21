@@ -392,12 +392,15 @@ QString BOMImportService::generateComponentCode(const BOMRow &row, int seq)
     // 简化 comment：去掉逗号、空格、特殊字符
     comment.replace(',', '-');
     comment.replace(' ', '-');
-    comment = comment.left(30);
+    comment = comment.left(20);  // 限制 Comment 部分长度，避免 code 过长
 
     QString code = QStringLiteral("LCSC-%1-%2").arg(fp, comment);
     if (seq > 0) {
         code += QStringLiteral("-%1").arg(seq);
     }
+    // 截断到 195 字符（VARCHAR(200) 安全余量）
+    if (code.length() > 195)
+        code = code.left(195);
     return code;
 }
 
