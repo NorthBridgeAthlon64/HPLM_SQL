@@ -10,16 +10,6 @@ ProductFeedback ProductFeedbackRepo::rowToFeedback(const QSqlQuery &q) {
     f.customerName=q.value("customer_name").toString(); f.versionNumber=q.value("version_number").toString();
     return f;
 }
-QList<ProductFeedback> ProductFeedbackRepo::findAll() {
-    QList<ProductFeedback> list; QSqlQuery q(m_db);
-    q.exec("SELECT pf.*, c.name AS customer_name, pv.version_number "
-           "FROM ProductFeedback pf "
-           "JOIN Customer c ON pf.customer_id = c.customer_id "
-           "JOIN ProductVersion pv ON pf.version_id = pv.version_id "
-           "ORDER BY pf.feedback_date DESC");
-    while (q.next()) list.append(rowToFeedback(q));
-    return list;
-}
 QList<ProductFeedback> ProductFeedbackRepo::findByVersion(int versionId) {
     QList<ProductFeedback> list; QSqlQuery q(m_db);
     q.prepare("SELECT pf.*, c.name AS customer_name, pv.version_number FROM ProductFeedback pf JOIN Customer c ON pf.customer_id=c.customer_id JOIN ProductVersion pv ON pf.version_id=pv.version_id WHERE pf.version_id=:vid AND pf.status='approved' ORDER BY pf.feedback_date DESC");

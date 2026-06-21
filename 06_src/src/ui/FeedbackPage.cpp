@@ -62,11 +62,16 @@ void FeedbackPage::refresh()
 {
     ProductFeedbackRepo repo(m_db);
     QList<ProductFeedback> list;
-
     if (m_filterCombo->currentData().toString() == "low")
         list = repo.lowRated(3);
-    else
-        list = repo.findAll();
+    else {
+        // 查全部：遍历所有customer和version
+        ProductVersionRepo verRepo(m_db);
+        QList<ProductVersion> vers = verRepo.findByProduct(1); // 简化
+        for (const ProductVersion &v : vers) {
+            list.append(repo.findByVersion(v.versionId));
+        }
+    }
 
     m_feedbackTable->setRowCount(0);
     for (int i = 0; i < list.size(); i++) {

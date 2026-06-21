@@ -22,7 +22,6 @@ class ProductFeedbackRepo : public QObject {
     Q_OBJECT
 public:
     explicit ProductFeedbackRepo(QSqlDatabase &db, QObject *p = nullptr);
-    QList<ProductFeedback> findAll();
     QList<ProductFeedback> findByVersion(int versionId);
     QList<ProductFeedback> findByCustomer(int customerId);
     QList<ProductFeedback> lowRated(double threshold = 3.0);
